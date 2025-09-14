@@ -194,17 +194,19 @@ class GcodeReader:
         ptoCortes = np.arange(limInf, limSup, step)
         minArea, minP = np.inf, 0
         minCut_solidArea = 0
+        minCut_points = []
         areaCortes = []
 
         for p in ptoCortes:
-            areaP, nCutPoints, areaSolida = self.apply_cutPoint(p, ejeMenor, ejeMayor)
+            areaP, nCutPoints, areaSolida, cutPoints = self.apply_cutPoint(p, ejeMenor, ejeMayor)
             areaCortes.append((p, areaP, nCutPoints, areaSolida))
             if areaP < minArea:
                 minArea, minP = areaP, p
                 minCut_solidArea = areaSolida
+                minCut_points = cutPoints
 
         logging.info(f"Menor área encontrada: {minArea:.4f} en corte {minP:.4f}")
-        return areaCortes, minP, minArea, minCut_solidArea
+        return areaCortes, minP, minArea, minCut_solidArea, minCut_points
 
     def apply_cutPoint(self, xcorte, ejeMenor, ejeMayor, verbose=False):
         """Aplica un corte vertical y calcula su área."""
@@ -221,7 +223,7 @@ class GcodeReader:
         if verbose:
             logging.info(f"Área proporcional del corte: {areaP:.4f}")
 
-        return areaP, len(cutPoints), area_totalSolida
+        return areaP, len(cutPoints), area_totalSolida, cutPoints
 
     def apply_cutSeg(self, cutSeg):
         """Calcula los puntos de intersección de un corte con los segmentos."""
@@ -276,6 +278,57 @@ class GcodeReader:
         a, b = maxy - miny, maxz - minz
         return a * b
 
+    def animate_layer_step_by_step(self, layer_index, animation_time=10):
+        """Animación de una capa, segmento por segmento."""
+
+        fig, ax = create_axis(projection='2d')
+        xmin, xmax, ymin, ymax, _, _ = self.xyzlimits
+        ax.set_xlim(add_margin_to_axis_limits(xmin, xmax))
+        ax.set_ylim(add_margin_to_axis_limits(ymin, ymax))
+        ax.set_xlabel('x')
+        ax.set_ylabel('y')
+        ax.set_title(f"Animación de la capa {layer_index}")
+
+        try:
+            layer_z = self.seg_index[layer_index]
+            temp = self.get_layerSegs(layer_z, layer_z)
+
+            if not temp:
+                logging.warning(f"No hay segmentos en la capa {layer_index}")
+                return
+
+            lens = np.array([abs(x0 - x1) + abs(y0 - y1) for x0, y0, x1, y1, z in temp])
+            times = lens / lens.sum() * animation_time
+
+            for time, (x0, y0, x1, y1, z) in zip(times, temp):
+                ax.plot([x0, x1], [y0, y1], 'y-')
+                plt.pause(time)
+                plt.draw()
+
+            plt.show()
+
+        except IndexError:
+            logging.error(f"El índice de capa {layer_index} está fuera de rango.")
+
+    def figSolidRectangle(self, cutPoints):
+        """Dibuja los puntos de corte y un rectángulo que los contiene."""
+        if not cutPoints:
+            logging.warning("No hay puntos de corte para graficar.")
+            return
+
+        y_coords = [p[1] for p in cutPoints]
+        z_coords = [p[2] for p in cutPoints]
+
+        miny, maxy = min(y_coords), max(y_coords)
+        minz, maxz = min(z_coords), max(z_coords)
+
+        fig, ax = plt.subplots()
+        ax.axis('off')
+        ax.add_patch(Rectangle((miny, minz), (maxy - miny), (maxz - minz), facecolor='k', fill=False))
+        ax.scatter(y_coords, z_coords, color=['red'], s=5)
+        ax.set_title("Vista de Corte Transversal")
+        plt.show()
+
 
 
 # Funciones auxiliares
@@ -303,7 +356,7 @@ def command_line_runner(filename, filetype, ref_file):
     """Función principal de ejecución desde línea de comandos."""
     gcode_reader = GcodeReader(filename, filetype)
     gcode_reader.remove_skirt()
-    areaCortes, minP, minArea, minCut_solidArea = gcode_reader.search_minorArea(CONFIG["delta"], CONFIG["step"], CONFIG["ejeMenor"], CONFIG["ejeMayor"])
+    areaCortes, minP, minArea, minCut_solidArea, minCut_points = gcode_reader.search_minorArea(CONFIG["delta"], CONFIG["step"], CONFIG["ejeMenor"], CONFIG["ejeMayor"])
 
     # Aplicar nuevo estilo de la interfaz
     plt.style.use('seaborn-v0_8-darkgrid')
@@ -335,6 +388,13 @@ def command_line_runner(filename, filetype, ref_file):
             plt.show()
     except Exception as e:
         logging.warning(f"No se pudo graficar la primera capa: {e}")
+
+    # --- Animación de una capa paso a paso ---
+    try:
+        if gcode_reader.n_layers > 6:
+            gcode_reader.animate_layer_step_by_step(layer_index=6)
+    except Exception as e:
+        logging.warning(f"No se pudo animar la capa paso a paso: {e}")
 
     # --- Animación capa por capa ---
     try:
@@ -394,6 +454,12 @@ def command_line_runner(filename, filetype, ref_file):
         plt.show()
     except Exception as e:
         logging.warning(f"No se pudo graficar en 3D: {e}")
+
+    # --- Visualización del corte transversal ---
+    try:
+        gcode_reader.figSolidRectangle(minCut_points)
+    except Exception as e:
+        logging.warning(f"No se pudo graficar el corte transversal: {e}")
 
     logging.info("Ejecución completa.")
 
