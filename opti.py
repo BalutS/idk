@@ -305,6 +305,9 @@ def command_line_runner(filename, filetype, ref_file):
     gcode_reader.remove_skirt()
     areaCortes, minP, minArea, minCut_solidArea = gcode_reader.search_minorArea(CONFIG["delta"], CONFIG["step"], CONFIG["ejeMenor"], CONFIG["ejeMayor"])
 
+    # Aplicar nuevo estilo de la interfaz
+    plt.style.use('seaborn-v0_8-darkgrid')
+
     # --- Visualización rápida de la primera capa en 2D ---
     try:
         z0 = float(gcode_reader.seg_index[0])
@@ -315,7 +318,7 @@ def command_line_runner(filename, filetype, ref_file):
                 ax.plot([x0, x1], [y0, y1], 'k-', linewidth=0.5)
 
             # Línea de corte transversal
-            ax.axvline(x=minP, color='r', linestyle='--', linewidth=1)
+            ax.axvline(x=minP, color='g', linestyle='--', linewidth=1)
             ax.set_aspect('equal', adjustable='datalim')
             ax.set_title(f'Primera capa z={z0:.3f}')
 
@@ -326,7 +329,7 @@ def command_line_runner(filename, filetype, ref_file):
                         f"Segmentos: {num_segs}\n"
                         f"Área Proporcional Mínima: {minArea:.4f}\n"
                         f"Área Sólida de Corte: {minCut_solidArea:.4f}")
-            props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
+            props = dict(boxstyle='round', facecolor='lightsteelblue', alpha=0.7)
             ax.text(0.05, 0.95, text_str, transform=ax.transAxes, fontsize=9,
                     verticalalignment='top', bbox=props)
             plt.show()
@@ -345,7 +348,7 @@ def command_line_runner(filename, filetype, ref_file):
         ax.set_ylim(ymin, ymax)
 
         # Línea de corte transversal
-        ax.axvline(x=minP, color='r', linestyle='--', linewidth=1)
+        ax.axvline(x=minP, color='g', linestyle='--', linewidth=1)
 
         # Dibujar capa por capa
         for idx, z in enumerate(gcode_reader.seg_index):
@@ -364,11 +367,11 @@ def command_line_runner(filename, filetype, ref_file):
     try:
         fig3d, ax3d = create_axis(projection='3d')
 
-        # Limitar a 7 capas
-        if gcode_reader.n_layers > 7:
-            z_max_layer = gcode_reader.seg_index[6]
+        # Limitar a 10 capas
+        if gcode_reader.n_layers > 10:
+            z_max_layer = gcode_reader.seg_index[9]
             segs_to_plot = gcode_reader.get_layerSegs(gcode_reader.seg_index[0], z_max_layer)
-            title = 'Trayectorias 3D (Primeras 7 capas)'
+            title = 'Trayectorias 3D (Primeras 10 capas)'
         else:
             segs_to_plot = gcode_reader.segs
             title = 'Trayectorias 3D (G-code)'
@@ -377,7 +380,7 @@ def command_line_runner(filename, filetype, ref_file):
             arr = np.array(segs_to_plot)
             for seg in arr:
                 x0, y0, x1, y1, z = seg
-                ax3d.plot([x0, x1], [y0, y1], [z, z], 'b-', linewidth=0.3)
+                ax3d.plot([x0, x1], [y0, y1], [z, z], 'c-', linewidth=0.3)
 
             # Plano de corte transversal
             _, _, ymin, ymax, _, _ = gcode_reader.xyzlimits
@@ -385,7 +388,7 @@ def command_line_runner(filename, filetype, ref_file):
             Y = np.array([[ymin, ymax], [ymin, ymax]])
             Z = np.array([[zmin_plot, zmin_plot], [zmax_plot, zmax_plot]])
             X = np.full_like(Y, minP)
-            ax3d.plot_surface(X, Y, Z, color='r', alpha=0.3, shade=False)
+            ax3d.plot_surface(X, Y, Z, color='g', alpha=0.3, shade=False)
 
         ax3d.set_title(title)
         plt.show()
