@@ -185,6 +185,7 @@ class GcodeReader:
 
         ptoCortes = np.arange(limInf, limSup, step)
         minArea, minP = np.inf, 0
+        minCut_solidArea = 0
         areaCortes = []
 
         for p in ptoCortes:
@@ -192,9 +193,10 @@ class GcodeReader:
             areaCortes.append((p, areaP, nCutPoints, areaSolida))
             if areaP < minArea:
                 minArea, minP = areaP, p
+                minCut_solidArea = areaSolida
 
         logging.info(f"Menor área encontrada: {minArea:.4f} en corte {minP:.4f}")
-        return areaCortes, minP, minArea
+        return areaCortes, minP, minArea, minCut_solidArea
 
     def apply_cutPoint(self, xcorte, ejeMenor, ejeMayor, verbose=False):
         """Aplica un corte vertical y calcula su área."""
@@ -293,7 +295,7 @@ def command_line_runner(filename, filetype, ref_file):
     """Función principal de ejecución desde línea de comandos."""
     gcode_reader = GcodeReader(filename, filetype)
     gcode_reader.remove_skirt()
-    areaCortes, minP, minArea = gcode_reader.search_minorArea(CONFIG["delta"], CONFIG["step"], CONFIG["ejeMenor"], CONFIG["ejeMayor"])
+    areaCortes, minP, minArea, minCut_solidArea = gcode_reader.search_minorArea(CONFIG["delta"], CONFIG["step"], CONFIG["ejeMenor"], CONFIG["ejeMayor"])
 
     # --- Visualización rápida de la primera capa en 2D ---
     try:
@@ -314,7 +316,8 @@ def command_line_runner(filename, filetype, ref_file):
             num_segs = gcode_reader.n_segs
             text_str = (f"Capas: {num_layers}\n"
                         f"Segmentos: {num_segs}\n"
-                        f"Área menor: {minArea:.4f}")
+                        f"Área Proporcional Mínima: {minArea:.4f}\n"
+                        f"Área Sólida de Corte: {minCut_solidArea:.4f}")
             props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
             ax.text(0.05, 0.95, text_str, transform=ax.transAxes, fontsize=9,
                     verticalalignment='top', bbox=props)
