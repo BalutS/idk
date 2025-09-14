@@ -311,7 +311,7 @@ class GcodeReader:
             logging.error(f"El índice de capa {layer_index} está fuera de rango.")
 
     def figSolidRectangle(self, cutPoints):
-        """Dibuja los puntos de corte y un rectángulo que los contiene."""
+        """Dibuja los puntos de corte y un cuadrado que los contiene."""
         if not cutPoints:
             logging.warning("No hay puntos de corte para graficar.")
             return
@@ -322,10 +322,23 @@ class GcodeReader:
         miny, maxy = min(y_coords), max(y_coords)
         minz, maxz = min(z_coords), max(z_coords)
 
+        width = maxy - miny
+        height = maxz - minz
+
+        side = max(width, height)
+
+        # Center the square
+        center_y = miny + width / 2
+        center_z = minz + height / 2
+
+        square_origin_y = center_y - side / 2
+        square_origin_z = center_z - side / 2
+
         fig, ax = plt.subplots()
+        ax.set_aspect('equal', adjustable='box')
         ax.axis('off')
-        ax.add_patch(Rectangle((miny, minz), (maxy - miny), (maxz - minz), facecolor='k', fill=False))
-        ax.scatter(y_coords, z_coords, color=['red'], s=5)
+        ax.add_patch(Rectangle((square_origin_y, square_origin_z), side, side, facecolor='k', fill=True))
+        ax.scatter(y_coords, z_coords, color='yellow', s=5)
         ax.set_title("Vista de Corte Transversal")
         plt.show()
 
