@@ -1,4 +1,3 @@
-
 # Gcode Reader Optimizado
 
 
@@ -28,9 +27,9 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 CONFIG = {
     "delta": 7.62,
     "step": 0.1,
-    "ejeMenor": 0.119 * 2,   
-    "ejeMayor": 0.191 * 2,   
-    "minDist_y": 0.338,      
+    "ejeMenor": 0.119 * 2,
+    "ejeMayor": 0.191 * 2,
+    "minDist_y": 0.338,
     "margin_ratio": 0.2
 }
 
@@ -81,7 +80,7 @@ class GcodeReader:
 
 
     # Lectura del archivo
-    
+
     def _read(self, filename: str):
         if self.filetype == GcodeType.FDM_REGULAR:
             segs = self._read_fdm_regular(filename)
@@ -132,9 +131,9 @@ class GcodeReader:
 
         return segs
 
-    
+
     # Cálculos geométricos
-    
+
     def _compute_xyzlimits(self, seg_list: np.ndarray):
         """Calcula los límites XYZ de todos los segmentos."""
         arr = np.array(seg_list)
@@ -158,9 +157,9 @@ class GcodeReader:
         """Devuelve los segmentos de capa entre min_layer y max_layer."""
         return [(x0, y0, x1, y1, z) for (x0, y0, x1, y1, z) in self.segs if min_layer <= z <= max_layer]
 
-    
+
     # Filtrado y cortes
-    
+
     def remove_skirt(self):
         """Elimina líneas externas (skirt) fuera de la pieza."""
         new_segs = [seg for seg in self.segs if not self.is_skirt(seg)]
@@ -175,9 +174,9 @@ class GcodeReader:
                 seg[0] > maxx or seg[1] > maxy or
                 seg[2] > maxx or seg[3] > maxy)
 
-    
+
     # Análisis de cortes
-    
+
     def search_minorArea(self, delta, step, ejeMenor, ejeMayor):
         """Busca la menor área transversal en la pieza."""
         minx, maxx = self.minDimensions[0], self.minDimensions[2]
@@ -195,7 +194,7 @@ class GcodeReader:
                 minArea, minP = areaP, p
 
         logging.info(f"Menor área encontrada: {minArea:.4f} en corte {minP:.4f}")
-        return areaCortes, minP
+        return areaCortes, minP, minArea
 
     def apply_cutPoint(self, xcorte, ejeMenor, ejeMayor, verbose=False):
         """Aplica un corte vertical y calcula su área."""
@@ -294,8 +293,9 @@ def command_line_runner(filename, filetype, ref_file):
     """Función principal de ejecución desde línea de comandos."""
     gcode_reader = GcodeReader(filename, filetype)
     gcode_reader.remove_skirt()
-    gcode_reader.search_minorArea(CONFIG["delta"], CONFIG["step"], CONFIG["ejeMenor"], CONFIG["ejeMayor"])
-        # --- Visualización rápida de la primera capa en 2D ---
+    areaCortes, minP, minArea = gcode_reader.search_minorArea(CONFIG["delta"], CONFIG["step"], CONFIG["ejeMenor"], CONFIG["ejeMayor"])
+
+    # --- Visualización rápida de la primera capa en 2D ---
     try:
         z0 = float(gcode_reader.seg_index[0])
         layer0 = gcode_reader.get_layerSegs(z0, z0)
@@ -303,13 +303,26 @@ def command_line_runner(filename, filetype, ref_file):
             fig, ax = create_axis(projection='2d')
             for x0, y0, x1, y1, z in layer0:
                 ax.plot([x0, x1], [y0, y1], 'k-', linewidth=0.5)
+
+            # Línea de corte transversal
+            ax.axvline(x=minP, color='r', linestyle='--', linewidth=1)
             ax.set_aspect('equal', adjustable='datalim')
             ax.set_title(f'Primera capa z={z0:.3f}')
+
+            # Información en la gráfica
+            num_layers = gcode_reader.n_layers
+            num_segs = gcode_reader.n_segs
+            text_str = (f"Capas: {num_layers}\n"
+                        f"Segmentos: {num_segs}\n"
+                        f"Área menor: {minArea:.4f}")
+            props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
+            ax.text(0.05, 0.95, text_str, transform=ax.transAxes, fontsize=9,
+                    verticalalignment='top', bbox=props)
             plt.show()
     except Exception as e:
         logging.warning(f"No se pudo graficar la primera capa: {e}")
 
-            # --- Animación capa por capa ---
+    # --- Animación capa por capa ---
     try:
         fig, ax = plt.subplots(figsize=(6, 6))
         ax.set_title("Simulación de impresión (2D)")
@@ -319,6 +332,9 @@ def command_line_runner(filename, filetype, ref_file):
         xmin, xmax, ymin, ymax, _, _ = gcode_reader.xyzlimits
         ax.set_xlim(xmin, xmax)
         ax.set_ylim(ymin, ymax)
+
+        # Línea de corte transversal
+        ax.axvline(x=minP, color='r', linestyle='--', linewidth=1)
 
         # Dibujar capa por capa
         for idx, z in enumerate(gcode_reader.seg_index):
@@ -336,11 +352,31 @@ def command_line_runner(filename, filetype, ref_file):
     # --- Visualización 3D rápida (trayectorias de impresión) ---
     try:
         fig3d, ax3d = create_axis(projection='3d')
-        arr = np.array(gcode_reader.segs)
-        for seg in arr:
-            x0, y0, x1, y1, z = seg
-            ax3d.plot([x0, x1], [y0, y1], [z, z], 'b-', linewidth=0.3)
-        ax3d.set_title('Trayectorias 3D (G-code)')
+
+        # Limitar a 7 capas
+        if gcode_reader.n_layers > 7:
+            z_max_layer = gcode_reader.seg_index[6]
+            segs_to_plot = gcode_reader.get_layerSegs(gcode_reader.seg_index[0], z_max_layer)
+            title = 'Trayectorias 3D (Primeras 7 capas)'
+        else:
+            segs_to_plot = gcode_reader.segs
+            title = 'Trayectorias 3D (G-code)'
+
+        if segs_to_plot:
+            arr = np.array(segs_to_plot)
+            for seg in arr:
+                x0, y0, x1, y1, z = seg
+                ax3d.plot([x0, x1], [y0, y1], [z, z], 'b-', linewidth=0.3)
+
+            # Plano de corte transversal
+            _, _, ymin, ymax, _, _ = gcode_reader.xyzlimits
+            zmin_plot, zmax_plot = np.min(arr[:, 4]), np.max(arr[:, 4])
+            Y = np.array([[ymin, ymax], [ymin, ymax]])
+            Z = np.array([[zmin_plot, zmin_plot], [zmax_plot, zmax_plot]])
+            X = np.full_like(Y, minP)
+            ax3d.plot_surface(X, Y, Z, color='r', alpha=0.3, shade=False)
+
+        ax3d.set_title(title)
         plt.show()
     except Exception as e:
         logging.warning(f"No se pudo graficar en 3D: {e}")
