@@ -12,6 +12,14 @@ import os.path
 import sys
 import logging
 
+# GUI File Dialog
+try:
+    import tkinter as tk
+    from tkinter import filedialog
+except ImportError:
+    tk = None
+    filedialog = None
+
 
 # Librerías externas
 
@@ -391,6 +399,24 @@ if __name__ == "__main__":
     logging.info("Iniciando Gcode Reader Optimizado...")
     filetype = GcodeType.FDM_REGULAR
     refFile = "compactSpecimen.xlsx"
-    filename = sys.argv[1]
+
+    filename = ""
+    if len(sys.argv) > 1:
+        filename = sys.argv[1]
+    else:
+        if tk and filedialog:
+            root = tk.Tk()
+            root.withdraw()
+            filename = filedialog.askopenfilename(
+                title="Seleccione un archivo .gcode",
+                filetypes=[("G-code files", "*.gcode"), ("All files", "*.*")]
+            )
+            if not filename:
+                logging.info("Operación cancelada por el usuario.")
+                sys.exit(0)
+        else:
+            logging.error("No se proporcionó un archivo como argumento y la GUI para seleccionar archivos no está disponible.")
+            sys.exit(1)
+
     logging.info(f"Archivo de entrada: {filename}")
     command_line_runner(filename, filetype, refFile)
